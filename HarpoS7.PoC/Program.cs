@@ -125,12 +125,13 @@ for (var i = 1; i < readCount - 3; i++)
 
     // Found a potential family prefix at position i.
     // The VLQ-encoded string length should be right before the string.
-    // For fingerprint strings (typically ~19 chars), the VLQ is a single byte (< 0x80).
+    // Fingerprint strings are short (e.g. "00:181B7B0847D11694" = 19 chars),
+    // so the VLQ is always a single byte (values < 0x80 encode in 1 byte).
     var possibleVlqByte = readBuffer[i - 1];
     if ((possibleVlqByte & 0x80) != 0) continue;
 
     uint candidateLength = possibleVlqByte;
-    if (candidateLength < 3 || candidateLength > 100) continue;
+    if (candidateLength < 3 || candidateLength > 100) continue; // typical fingerprints are ~19 chars
     if (i + (int)candidateLength > readCount) continue;
 
     var candidateString = Encoding.UTF8.GetString(readBuffer.AsSpan(i, (int)candidateLength));
@@ -139,7 +140,8 @@ for (var i = 1; i < readCount - 3; i++)
     var isValidFingerprint = candidateString.Length > 3;
     for (var j = 3; j < candidateString.Length && isValidFingerprint; j++)
     {
-        if (!Uri.IsHexDigit(candidateString[j]))
+        var c = candidateString[j];
+        if (!((c >= '0' && c <= '9') || (c >= 'A' && c <= 'F') || (c >= 'a' && c <= 'f')))
             isValidFingerprint = false;
     }
 

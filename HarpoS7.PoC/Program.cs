@@ -96,7 +96,7 @@ Console.WriteLine("Creating a session object");
 await stream.WriteAsync(createObjectRequest);
 
 Console.WriteLine("Waiting for create object response");
-_ = await stream.ReadAsync(readBuffer);
+var readCount = await stream.ReadAsync(readBuffer);
 
 await stream.WriteAsync(emptyDtData);
 
@@ -107,42 +107,72 @@ var sessionId = Vlq.DecodeAsVlq32(readBuffer.AsSpan(sessionIdOffset, 5), out _);
 Console.WriteLine($"Session ID: 0x{sessionId:X8}");
 
 // read the public key fingerprint
-// the string length is serialized as a VLQ-encoded number
+// Instead of relying on hardcoded offsets (which vary across PLC models/firmware versions),
+// we scan the response buffer for the fingerprint pattern: "XX:" followed by hex digits,
+// where XX is the public key family (00, 01, or 03).
+string? fingerprintString = null;
+Memory<byte> fingerprintStringBytes = default;
+var fingerprintValueOffset = 0;
 
-const int plcSimPacketFingerprintLengthOffset = 0x37;
-const int realPlcPacketFingerprintLengthOffset = 0x2F;
-
-// max length of a 32-bit VLQ number is 5 (4+1) bytes
-var fingerprintLength = Vlq.DecodeAsVlq32(readBuffer.AsSpan(plcSimPacketFingerprintLengthOffset, 5), out var vlqLength);
-var fingerprintValueOffset = plcSimPacketFingerprintLengthOffset + vlqLength;
-
-var fingerprintStringBytes = readBuffer.AsMemory(fingerprintValueOffset, (int)fingerprintLength);
-var fingerprintString = Encoding.UTF8.GetString(fingerprintStringBytes.Span);
-
-if (!fingerprintString.StartsWith("03:") && !fingerprintString.StartsWith("00:") && !fingerprintString.StartsWith("01:"))
+for (var i = 1; i < readCount - 3; i++)
 {
-    Console.WriteLine("[?] Fingerprint does not start with 03:, checking family0/1 offset...");
-    
-    fingerprintLength = Vlq.DecodeAsVlq32(readBuffer.AsSpan(realPlcPacketFingerprintLengthOffset, 5), out vlqLength);
-    fingerprintValueOffset = realPlcPacketFingerprintLengthOffset + vlqLength;
+    // Look for family prefix patterns in ASCII/UTF-8:
+    // "00:" = 0x30,0x30,0x3A | "01:" = 0x30,0x31,0x3A | "03:" = 0x30,0x33,0x3A
+    if (readBuffer[i] != 0x30 || readBuffer[i + 2] != 0x3A)
+        continue;
+    if (readBuffer[i + 1] != 0x30 && readBuffer[i + 1] != 0x31 && readBuffer[i + 1] != 0x33)
+        continue;
 
-    fingerprintStringBytes = readBuffer.AsMemory(fingerprintValueOffset, (int)fingerprintLength);
-    fingerprintString = Encoding.UTF8.GetString(fingerprintStringBytes.Span);
+    // Found a potential family prefix at position i.
+    // The VLQ-encoded string length should be right before the string.
+    // For fingerprint strings (typically ~19 chars), the VLQ is a single byte (< 0x80).
+    var possibleVlqByte = readBuffer[i - 1];
+    if ((possibleVlqByte & 0x80) != 0) continue;
 
-    if (!fingerprintString.StartsWith("03:") && !fingerprintString.StartsWith("00:") && !fingerprintString.StartsWith("01:"))
+    uint candidateLength = possibleVlqByte;
+    if (candidateLength < 3 || candidateLength > 100) continue;
+    if (i + (int)candidateLength > readCount) continue;
+
+    var candidateString = Encoding.UTF8.GetString(readBuffer.AsSpan(i, (int)candidateLength));
+
+    // Validate: family prefix followed by hex digits only
+    var isValidFingerprint = candidateString.Length > 3;
+    for (var j = 3; j < candidateString.Length && isValidFingerprint; j++)
     {
-        Console.WriteLine(Convert.ToHexString(fingerprintStringBytes.ToArray()));
-        Console.WriteLine("[-] Fingerprint does not start with 03: nor with 00:. Exiting");
-        return;
+        if (!Uri.IsHexDigit(candidateString[j]))
+            isValidFingerprint = false;
     }
 
-    Console.WriteLine("[+] Family0/1 fingerprint found");
+    if (isValidFingerprint)
+    {
+        fingerprintString = candidateString;
+        fingerprintStringBytes = readBuffer.AsMemory(i, (int)candidateLength);
+        fingerprintValueOffset = i;
+        Console.WriteLine($"[+] Found fingerprint at offset 0x{i:X2}");
+        break;
+    }
 }
 
-// again, you would normally deserialize the response packet
-// and read the challenge array safely, instead of relying on byte offsets
-var rawChallengeArrayOffset = fingerprintString.StartsWith("03:") ? 0x7D : 0x75;
+if (fingerprintString == null)
+{
+    Console.WriteLine("[-] Could not find a valid fingerprint (XX:hexdigits where XX is 00, 01, or 03) in the response.");
+    Console.WriteLine("[-] Raw response: " + Convert.ToHexString(readBuffer.AsSpan(0, readCount)));
+    return;
+}
+
+// The challenge array is located at a consistent relative offset after the fingerprint string.
+// Across known PLC types (PLCSim, S7-1500, S7-1200), the gap between the end of the
+// fingerprint string and the start of the 20-byte challenge is 50 bytes.
+const int fingerprintToChallengeGap = 50;
+var rawChallengeArrayOffset = fingerprintValueOffset + fingerprintString.Length + fingerprintToChallengeGap;
 const int rawChallengeArrayLength = 20;
+
+if (rawChallengeArrayOffset + rawChallengeArrayLength > readCount)
+{
+    Console.WriteLine($"[-] Challenge offset (0x{rawChallengeArrayOffset:X2}) is out of bounds (response length: {readCount}).");
+    Console.WriteLine("[-] Raw response: " + Convert.ToHexString(readBuffer.AsSpan(0, readCount)));
+    return;
+}
 
 // read the 20-long byte buffer (the challenge)
 var challenge = readBuffer.AsMemory(rawChallengeArrayOffset, rawChallengeArrayLength);

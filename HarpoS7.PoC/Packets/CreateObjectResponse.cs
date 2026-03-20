@@ -27,6 +27,8 @@ public class CreateObjectResponse
 
     private const int ChallengeLength = 20;
 
+    private const int MaxFingerprintStringLength = 200;
+
     /// <summary>
     /// Parse a CreateObject response from S7CommPlus data.
     /// The data should NOT include TPKT/COTP headers (use CotpStream to strip them).
@@ -90,8 +92,9 @@ public class CreateObjectResponse
             }
         }
 
-        // Session ID 0x00000000 can occur with some PLC models (see issue #18)
-        // In that case, return 0
+        // Session ID 0x00000000 can occur with older PLC firmware versions (see issue #18).
+        // While unusual, we return 0 rather than throwing since the original code handled this case.
+        // The caller should check for a zero session ID and handle it appropriately.
         return 0;
     }
 
@@ -115,7 +118,7 @@ public class CreateObjectResponse
                 continue;
 
             var stringLength = Vlq.DecodeAsVlq32(data[(i + 1)..], out var vlqLen);
-            if (stringLength < 4 || stringLength > 200)
+            if (stringLength < 4 || stringLength > MaxFingerprintStringLength)
                 continue;
 
             var stringStart = i + 1 + vlqLen;

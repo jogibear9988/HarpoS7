@@ -23,11 +23,11 @@ namespace HarpoS7.PoC.Packets;
 /// </summary>
 public class CreateObjectRequest
 {
-    /// <summary>Name of the session (e.g. "ServerSession_1C9C381")</summary>
-    public string SessionName { get; set; } = "ServerSession_1C9C381";
+    /// <summary>Name of the session (auto-generated with unique suffix)</summary>
+    public string SessionName { get; set; } = $"ServerSession_{Guid.NewGuid().ToString("N")[..7].ToUpperInvariant()}";
 
     /// <summary>Network adapter info string</summary>
-    public string AdapterInfo { get; set; } = "A0:::6.0::ASIX AX88179 USB 3.0 to Gigabit Ethernet Adapter.TCPIP.1";
+    public string AdapterInfo { get; set; } = "A0:::6.0::HarpoS7.TCPIP.1";
 
     /// <summary>Access mode string</summary>
     public string AccessMode { get; set; } = "Read Write";
@@ -36,7 +36,7 @@ public class CreateObjectRequest
     public string ApplicationName { get; set; } = "HMI RT OMS+";
 
     /// <summary>Host name string</summary>
-    public string HostName { get; set; } = "YourHost";
+    public string HostName { get; set; } = Environment.MachineName;
 
     /// <summary>Access level integer</summary>
     public byte AccessLevel { get; set; } = 0x02;

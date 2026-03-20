@@ -57,6 +57,20 @@ public class CreateObjectRequestTests
     }
 
     [Test]
+    public void BuildPayload_DefaultSessionNameStartsWithPrefix()
+    {
+        var request = new CreateObjectRequest();
+        Assert.That(request.SessionName, Does.StartWith("ServerSession_"));
+    }
+
+    [Test]
+    public void BuildPayload_DefaultHostNameIsSet()
+    {
+        var request = new CreateObjectRequest();
+        Assert.That(request.HostName, Is.Not.Null.And.Not.Empty);
+    }
+
+    [Test]
     public void BuildPayload_ContainsHostName()
     {
         var request = new CreateObjectRequest { HostName = "MyTestHost" };

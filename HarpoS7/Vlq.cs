@@ -1,22 +1,28 @@
-namespace HarpoS7.PoC;
+using System.Buffers.Binary;
+
+namespace HarpoS7;
 
 /// <summary>
-/// Class responsible for encoding/decoding VLQ numbers
-/// which I stole from my own WIP S7-Comm-Plus library
+/// Provides methods for encoding and decoding Variable-Length Quantity (VLQ) numbers
+/// used in the S7CommPlus protocol.
 /// </summary>
 public static class Vlq
 {
-    public static uint DecodeAsVlq32(ReadOnlySpan<byte> bytes, out int length)
+    /// <summary>
+    /// Decodes a VLQ-encoded 32-bit unsigned integer from the given byte span.
+    /// </summary>
+    /// <param name="bytes">The source bytes</param>
+    /// <param name="length">The number of bytes consumed</param>
+    /// <returns>The decoded value</returns>
+    public static uint DecodeUInt32(ReadOnlySpan<byte> bytes, out int length)
     {
         uint value = 0U;
-
         int index = 0;
         byte vlqPartValue;
 
         do
         {
             value <<= 7;
-
             vlqPartValue = bytes[index++];
             value |= (byte)(vlqPartValue & 0b0111_1111);
         } while ((vlqPartValue & 0b1000_0000) != 0 && index < 5);
@@ -24,18 +30,22 @@ public static class Vlq
         length = index;
         return value;
     }
-    
-    public static ulong DecodeAsVlq64(this ReadOnlySpan<byte> bytes, out int length)
+
+    /// <summary>
+    /// Decodes a VLQ-encoded 64-bit unsigned integer from the given byte span.
+    /// </summary>
+    /// <param name="bytes">The source bytes</param>
+    /// <param name="length">The number of bytes consumed</param>
+    /// <returns>The decoded value</returns>
+    public static ulong DecodeUInt64(ReadOnlySpan<byte> bytes, out int length)
     {
         ulong value = 0UL;
-
         int index = 0;
         byte vlqPartValue;
 
         do
         {
             value <<= 7;
-
             vlqPartValue = bytes[index++];
             value |= (byte)(vlqPartValue & 0b0111_1111);
         } while ((vlqPartValue & 0b1000_0000) != 0 && index < 8);
@@ -49,8 +59,14 @@ public static class Vlq
         length = index;
         return value;
     }
-    
-    public static int EncodeAsVlq(this ulong value, Span<byte> destination)
+
+    /// <summary>
+    /// Encodes a 64-bit unsigned integer as a VLQ number into the destination span.
+    /// </summary>
+    /// <param name="value">The value to encode</param>
+    /// <param name="destination">The destination buffer (must be at least 9 bytes)</param>
+    /// <returns>The number of bytes written</returns>
+    public static int Encode(ulong value, Span<byte> destination)
     {
         if (value == 0x00UL)
         {
@@ -71,8 +87,7 @@ public static class Vlq
         bool fullVlq = false;
         if ((value & lastOctetMask) != 0)
         {
-            // this value will be encoded as a 9 byte VLQ
-
+            // This value will be encoded as a 9 byte VLQ
             fullVlq = true;
 
             vlqEncodedPart = (byte)remainingValue;
@@ -91,8 +106,8 @@ public static class Vlq
 
         if (!fullVlq)
         {
-            // reset the VLQ bit on the least significant octet
-            vlqSpan[^1] &= (0b0111_1111);
+            // Reset the VLQ bit on the least significant octet
+            vlqSpan[^1] &= 0b0111_1111;
         }
 
         vlqSpan[(vlqBufferLength - index)..].CopyTo(destination);

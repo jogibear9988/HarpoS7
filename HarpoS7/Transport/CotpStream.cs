@@ -40,7 +40,7 @@ public class CotpStream : Stream
         _underlyingStream = underlyingStream;
     }
 
-    internal async Task WriteConnectionRequestAsync(string destinationTsap)
+    public async Task WriteConnectionRequestAsync(string destinationTsap)
     {
         var length = 4 + MinCotpConRequestLength + Encoding.ASCII.GetByteCount(destinationTsap);
         var header = ArrayPool<byte>.Shared.Rent(length);
@@ -62,7 +62,7 @@ public class CotpStream : Stream
     /// </summary>
     /// <param name="cancellationToken"></param>
     /// <exception cref="Exception"></exception>
-    internal async Task ReadConnectionConfirmAsync(CancellationToken cancellationToken = default)
+    public async Task ReadConnectionConfirmAsync(CancellationToken cancellationToken = default)
     {
         // If the destination TSAP was different than the default one, the buffer length will be different.
         var header = ArrayPool<byte>.Shared.Rent(ExpectedCotpConConfirmLength);
@@ -96,7 +96,7 @@ public class CotpStream : Stream
         }
     }
 
-    internal async Task WriteEmptyDtDataAsync() => await _underlyingStream.WriteAsync(EmptyDtDataCotpPacket);
+    public async Task WriteEmptyDtDataAsync() => await _underlyingStream.WriteAsync(EmptyDtDataCotpPacket);
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = new())
     {

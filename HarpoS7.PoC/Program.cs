@@ -9,11 +9,12 @@ using HarpoS7.PoC.Models;
 using HarpoS7.PoC.Packets;
 using HarpoS7.PublicKeys.Exceptions;
 using HarpoS7.PublicKeys.Impl;
+using HarpoS7.Transport;
 using HarpoS7.Utilities.Auth;
 using HarpoS7.Utilities.Extensions;
 
-// All "requests" were extracted from a Wireshark dump
-// in a real library/app you would obviously serialize/deserialize these dynamically
+// The PoC now uses proper data structures for S7 Comm Plus packets
+// instead of hardcoded binary blobs. See Protocol/ and Packets/ folders.
 
 var readBuffer = new byte[1024];
 if (args.Length < 1 || !IPEndPoint.TryParse(args[0], out var endPoint))
@@ -41,130 +42,64 @@ catch (SocketException ex)
 }
 
 Console.WriteLine($"[+] Connected to {endPoint}");
-var stream = client.GetStream();
 
-// Send COTP Connection Request
-var cotpConnectionRequest = new byte[] 
-{
-    0x03, 0x00, 0x00, 0x24, 0x1F, 0xE0, 0x00, 0x00, 0x00, 0x01, 0x00, 0xC1,
-    0x02, 0x06, 0x00, 0xC2, 0x10, 0x53, 0x49, 0x4D, 0x41, 0x54, 0x49, 0x43,
-    0x2D, 0x52, 0x4F, 0x4F, 0x54, 0x2D, 0x48, 0x4D, 0x49, 0xC0, 0x01, 0x0A
-};
+// Use CotpStream for proper TPKT/COTP framing
+var cotpStream = new CotpStream(client.GetStream());
 
+// COTP Connection Request (using structured CotpStream instead of hardcoded bytes)
 Console.WriteLine("Sending COTP CR...");
-await stream.WriteAsync(cotpConnectionRequest);
+await cotpStream.WriteConnectionRequestAsync("SIMATIC-ROOT-HMI");
 
 Console.WriteLine("Waiting for COTP Connection Confirm");
-_ = await stream.ReadAsync(readBuffer);
+await cotpStream.ReadConnectionConfirmAsync();
 
-// write empty DT-Data
-var emptyDtData = new byte[]
-{
-	0x03, 0x00, 0x00, 0x07, 0x02, 0xF0, 0x00
-};
-await stream.WriteAsync(emptyDtData);
+// Write empty DT-Data
+await cotpStream.WriteEmptyDtDataAsync();
 
-// Send S7CommPlus CreateObject request (creates a session object on the PLC)
-var createObjectRequest = new byte[] 
-{
-	0x03, 0x00, 0x01, 0x10, 0x02, 0xF0, 0x80, 0x72, 0x01, 0x01, 0x01, 0x31,
-	0x00, 0x00, 0x04, 0xCA, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x20,
-	0x36, 0x00, 0x00, 0x01, 0x1D, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00,
-	0xA1, 0x00, 0x00, 0x00, 0xD3, 0x82, 0x1F, 0x00, 0x00, 0xA3, 0x81, 0x69,
-	0x00, 0x15, 0x15, 0x53, 0x65, 0x72, 0x76, 0x65, 0x72, 0x53, 0x65, 0x73,
-	0x73, 0x69, 0x6F, 0x6E, 0x5F, 0x31, 0x43, 0x39, 0x43, 0x33, 0x38, 0x31,
-	0xA3, 0x82, 0x21, 0x00, 0x15, 0x41, 0x30, 0x3A, 0x3A, 0x3A, 0x36, 0x2E,
-	0x30, 0x3A, 0x3A, 0x41, 0x53, 0x49, 0x58, 0x20, 0x41, 0x58, 0x38, 0x38,
-	0x31, 0x37, 0x39, 0x20, 0x55, 0x53, 0x42, 0x20, 0x33, 0x2E, 0x30, 0x20,
-	0x74, 0x6F, 0x20, 0x47, 0x69, 0x67, 0x61, 0x62, 0x69, 0x74, 0x20, 0x45,
-	0x74, 0x68, 0x65, 0x72, 0x6E, 0x65, 0x74, 0x20, 0x41, 0x64, 0x61, 0x70,
-	0x74, 0x65, 0x72, 0x2E, 0x54, 0x43, 0x50, 0x49, 0x50, 0x2E, 0x31, 0xA3,
-	0x82, 0x28, 0x00, 0x15, 0x0A, 0x52, 0x65, 0x61, 0x64, 0x20, 0x57, 0x72,
-	0x69, 0x74, 0x65, 0xA3, 0x82, 0x29, 0x00, 0x15, 0x0B, 0x48, 0x4D, 0x49,
-	0x20, 0x52, 0x54, 0x20, 0x4F, 0x4D, 0x53, 0x2B, 0xA3, 0x82, 0x2A, 0x00,
-	0x15, 0x08, 0x59, 0x6F, 0x75, 0x72, 0x48, 0x6F, 0x73, 0x74, 0xA3, 0x82,
-	0x2B, 0x00, 0x04, 0x02, 0xA3, 0x82, 0x2C, 0x00, 0x12, 0x01, 0xC9, 0xC3,
-	0x81, 0xA3, 0x82, 0x2D, 0x00, 0x15, 0x0F, 0x52, 0x65, 0x61, 0x64, 0x2F,
-	0x57, 0x72, 0x69, 0x74, 0x65, 0x20, 0x74, 0x61, 0x67, 0x73, 0xA1, 0x00,
-	0x00, 0x00, 0xD3, 0x81, 0x7F, 0x00, 0x00, 0xA3, 0x81, 0x69, 0x00, 0x15,
-	0x15, 0x53, 0x75, 0x62, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74, 0x69, 0x6F,
-	0x6E, 0x43, 0x6F, 0x6E, 0x74, 0x61, 0x69, 0x6E, 0x65, 0x72, 0xA2, 0xA2,
-	0x00, 0x00, 0x00, 0x00, 0x72, 0x01, 0x00, 0x00
-};
-
+// Send S7CommPlus CreateObject request (using structured builder instead of binary blob)
 Console.WriteLine("Creating a session object");
-await stream.WriteAsync(createObjectRequest);
+var createObjectRequest = new CreateObjectRequest();
+cotpStream.Write(createObjectRequest.BuildPayload());
 
 Console.WriteLine("Waiting for create object response");
-_ = await stream.ReadAsync(readBuffer);
+var responseLength = await cotpStream.ReadAsync(readBuffer);
 
-await stream.WriteAsync(emptyDtData);
-
-// read the session object id
-const int sessionIdOffset = 0x17;
-var sessionId = Vlq.DecodeAsVlq32(readBuffer.AsSpan(sessionIdOffset, 5), out _);
-
-Console.WriteLine($"Session ID: 0x{sessionId:X8}");
-
-// read the public key fingerprint
-// the string length is serialized as a VLQ-encoded number
-
-const int plcSimPacketFingerprintLengthOffset = 0x37;
-const int realPlcPacketFingerprintLengthOffset = 0x2F;
-
-// max length of a 32-bit VLQ number is 5 (4+1) bytes
-var fingerprintLength = Vlq.DecodeAsVlq32(readBuffer.AsSpan(plcSimPacketFingerprintLengthOffset, 5), out var vlqLength);
-var fingerprintValueOffset = plcSimPacketFingerprintLengthOffset + vlqLength;
-
-var fingerprintStringBytes = readBuffer.AsMemory(fingerprintValueOffset, (int)fingerprintLength);
-var fingerprintString = Encoding.UTF8.GetString(fingerprintStringBytes.Span);
-
-if (!fingerprintString.StartsWith("03:") && !fingerprintString.StartsWith("00:") && !fingerprintString.StartsWith("01:"))
+// Parse the CreateObject response using the structured parser.
+// This dynamically scans for the session ID, fingerprint, and challenge
+// instead of using hardcoded offsets, which fixes compatibility with
+// different PLC models and firmware versions (issue #18).
+CreateObjectResponse response;
+try
 {
-    Console.WriteLine("[?] Fingerprint does not start with 03:, checking family0/1 offset...");
-    
-    fingerprintLength = Vlq.DecodeAsVlq32(readBuffer.AsSpan(realPlcPacketFingerprintLengthOffset, 5), out vlqLength);
-    fingerprintValueOffset = realPlcPacketFingerprintLengthOffset + vlqLength;
-
-    fingerprintStringBytes = readBuffer.AsMemory(fingerprintValueOffset, (int)fingerprintLength);
-    fingerprintString = Encoding.UTF8.GetString(fingerprintStringBytes.Span);
-
-    if (!fingerprintString.StartsWith("03:") && !fingerprintString.StartsWith("00:") && !fingerprintString.StartsWith("01:"))
-    {
-        Console.WriteLine(Convert.ToHexString(fingerprintStringBytes.ToArray()));
-        Console.WriteLine("[-] Fingerprint does not start with 03: nor with 00:. Exiting");
-        return;
-    }
-
-    Console.WriteLine("[+] Family0/1 fingerprint found");
+    response = new CreateObjectResponse(readBuffer.AsSpan(0, responseLength));
+}
+catch (InvalidDataException ex)
+{
+    Console.WriteLine($"[-] Failed to parse CreateObject response: {ex.Message}");
+    Console.WriteLine($"[-] Response hex: {Convert.ToHexString(readBuffer.AsSpan(0, responseLength))}");
+    return;
 }
 
-// again, you would normally deserialize the response packet
-// and read the challenge array safely, instead of relying on byte offsets
-var rawChallengeArrayOffset = fingerprintString.StartsWith("03:") ? 0x7D : 0x75;
-const int rawChallengeArrayLength = 20;
+Console.WriteLine($"Session ID: 0x{response.SessionId:X8}");
+Console.WriteLine($"Fingerprint: {response.Fingerprint}");
 
-// read the 20-long byte buffer (the challenge)
-var challenge = readBuffer.AsMemory(rawChallengeArrayOffset, rawChallengeArrayLength);
 Console.Write("Challenge: ");
-Helpers.PrintBuffer(challenge);
-
-Console.WriteLine($"Reversed fingerprint: {fingerprintString}");
+Helpers.PrintBuffer(response.Challenge);
 
 // reverse string and parse fingerprint
 var publicKeyFingerprint = new byte[Constants.KeyIdLength];
-Helpers.ParseAndReverseBytes(fingerprintString, publicKeyFingerprint);
+Helpers.ParseAndReverseBytes(response.Fingerprint, publicKeyFingerprint);
 
 Console.Write("Actual fingerprint: ");
 Helpers.PrintBuffer(publicKeyFingerprint);
 
 // get the matching public key from the KeyStore
 var store = new DefaultPublicKeyStore();
-var publicKey = new byte[store.GetPublicKeyLength(fingerprintString)];
+var publicKey = new byte[store.GetPublicKeyLength(response.Fingerprint)];
 
 try
 {
-    store.ReadPublicKey(publicKey.AsSpan(), fingerprintString);
+    store.ReadPublicKey(publicKey.AsSpan(), response.Fingerprint);
 }
 catch (UnknownPublicKeyException)
 {
@@ -176,18 +111,17 @@ catch (UnknownPublicKeyException)
 Console.WriteLine("[+] Public key found");
 
 // create buffers
+var publicKeyFamily = response.Fingerprint.ToPublicKeyFamily();
 var sessionKey = new byte[Constants.SessionKeyLength];
-var keyBlob = new byte[fingerprintString.StartsWith("03:") ? CommonConstants.EncryptedBlobLengthPlcSim : CommonConstants.EncryptedBlobLengthRealPlc];
+var keyBlob = new byte[response.Fingerprint.StartsWith("03:") ? CommonConstants.EncryptedBlobLengthPlcSim : CommonConstants.EncryptedBlobLengthRealPlc];
 
 Console.WriteLine("Doing the encryption...");
-
-var publicKeyFamily = fingerprintString.ToPublicKeyFamily();
 
 // auth locally
 LegacyAuthenticationScheme.Authenticate(
     keyBlob.AsSpan(),
     sessionKey.AsSpan(),
-    challenge.Span,
+    response.Challenge.AsSpan(),
     publicKey.AsSpan(),
     publicKeyFamily
 );
@@ -203,7 +137,7 @@ var setMultiVarsRequest = new SetMultiVarsRequest(
     pubKeyId,
     sessionKeyId,
     keyBlob.AsSpan(),
-    sessionId
+    response.SessionId
 );
 
 // send request
@@ -212,13 +146,13 @@ Console.WriteLine("Sending a set multi vars request");
 switch (publicKeyFamily)
 {
     case EPublicKeyFamily.S71500:
-        setMultiVarsRequest.WriteS71500(stream);
+        setMultiVarsRequest.WriteS71500(client.GetStream());
         break;
     case EPublicKeyFamily.S71200:
-        setMultiVarsRequest.WriteS71200(stream);
+        setMultiVarsRequest.WriteS71200(client.GetStream());
         break;
     case EPublicKeyFamily.PlcSim:
-        setMultiVarsRequest.WritePlcSim(stream);
+        setMultiVarsRequest.WritePlcSim(client.GetStream());
         break;
     default:
         throw new Exception("setMultiVarsRequest: Unsupported public key family");
@@ -231,7 +165,7 @@ Console.WriteLine("Waiting for a set var response...");
 int read;
 try
 {
-	read = await stream.ReadAsync(readBuffer, tokenSource.Token);
+	read = await client.GetStream().ReadAsync(readBuffer, tokenSource.Token);
 }
 catch (OperationCanceledException)
 {
@@ -278,8 +212,8 @@ var accessPassword = args[1];
 Console.WriteLine($"Trying to legitimate the session with a password (\"{accessPassword}\")");
 
 Console.WriteLine("Requesting the legitimation challenge");
-var subStreamRequest = new GetVarSubStreamedRequest(sessionKey.AsSpan(), sessionId);
-subStreamRequest.WriteRealPlc(stream);
+var subStreamRequest = new GetVarSubStreamedRequest(sessionKey.AsSpan(), response.SessionId);
+subStreamRequest.WriteRealPlc(client.GetStream());
 
 tokenSource = new CancellationTokenSource();
 tokenSource.CancelAfter(3000);
@@ -287,7 +221,7 @@ Console.WriteLine("Waiting for the challenge...");
 
 try
 {
-    read = await stream.ReadAsync(readBuffer, tokenSource.Token);
+    read = await client.GetStream().ReadAsync(readBuffer, tokenSource.Token);
 }
 catch (OperationCanceledException)
 {
@@ -316,10 +250,10 @@ LegitimateScheme.SolveLegitimateChallengeRealPlc(
 Console.WriteLine("[+] Challenge solved");
 Console.WriteLine("Sending the SetVarSubStreamed request...");
 
-var legitSetChallenge = new SetVarSubStreamedRequest(sessionKey, legitBlob, sessionId);
-legitSetChallenge.WriteRealPlc(stream);
+var legitSetChallenge = new SetVarSubStreamedRequest(sessionKey, legitBlob, response.SessionId);
+legitSetChallenge.WriteRealPlc(client.GetStream());
 
-await stream.WriteAsync(emptyDtData);
+await cotpStream.WriteEmptyDtDataAsync();
 
 tokenSource = new CancellationTokenSource();
 tokenSource.CancelAfter(3000);
@@ -327,7 +261,7 @@ Console.WriteLine("Waiting for the response...");
 
 try
 {
-    read = await stream.ReadAsync(readBuffer, tokenSource.Token);
+    read = await client.GetStream().ReadAsync(readBuffer, tokenSource.Token);
 }
 catch (OperationCanceledException)
 {

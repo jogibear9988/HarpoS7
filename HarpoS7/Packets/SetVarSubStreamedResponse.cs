@@ -19,7 +19,7 @@ public class SetVarSubStreamedResponse
     /// <param name="packet">The raw packet bytes</param>
     public SetVarSubStreamedResponse(ReadOnlySpan<byte> packet)
     {
-        var returnValue = Vlq.DecodeUInt64(packet[ReturnValueOffset..], out _);
-        StatusCode = (int)(returnValue & 0b11111111_11111111);
+        var rawStatusValue = Vlq.DecodeUInt64(packet[ReturnValueOffset..], out _);
+        StatusCode = (int)(rawStatusValue & 0b11111111_11111111);
     }
 }

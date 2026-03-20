@@ -24,6 +24,16 @@ public class CreateObjectResponse
     private const int RealPlcFingerprintLengthOffset = 0x28;
 
     /// <summary>
+    /// Offset of the challenge in PlcSim responses.
+    /// </summary>
+    private const int PlcSimChallengeOffset = 0x76;
+
+    /// <summary>
+    /// Offset of the challenge in real PLC (S7-1200/S7-1500) responses.
+    /// </summary>
+    private const int RealPlcChallengeOffset = 0x6E;
+
+    /// <summary>
     /// The session ID assigned by the PLC.
     /// </summary>
     public uint SessionId { get; }
@@ -55,8 +65,7 @@ public class CreateObjectResponse
                           "Could not find a valid public key fingerprint in the response");
 
         // Read the 20-byte challenge
-        // The challenge offset depends on the device family
-        var challengeOffset = Fingerprint.StartsWith("03:") ? 0x76 : 0x6E;
+        var challengeOffset = Fingerprint.StartsWith("03:") ? PlcSimChallengeOffset : RealPlcChallengeOffset;
         Challenge = payload.Slice(challengeOffset, Constants.ChallengeLength).ToArray();
     }
 

@@ -218,6 +218,8 @@ catch (OperationCanceledException)
     return;
 }
 
+// Offset 0x34 in the CotpStream payload corresponds to 0x3B in the raw TCP packet
+// (CotpStream strips the 7-byte TPKT+COTP header)
 const int realPlcLegitimationChallengeOffset = 0x34;
 var legitimationChallenge = readBuffer.AsSpan(realPlcLegitimationChallengeOffset, 20).ToArray();
 

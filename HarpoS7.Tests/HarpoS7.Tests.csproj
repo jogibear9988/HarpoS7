@@ -24,6 +24,7 @@
     <ItemGroup>
       <ProjectReference Include="..\HarpoS7.Utilities\HarpoS7.Utilities.csproj" />
       <ProjectReference Include="..\HarpoS7\HarpoS7.csproj" />
+      <ProjectReference Include="..\HarpoS7.PoC\HarpoS7.PoC.csproj" />
     </ItemGroup>
 
 </Project>

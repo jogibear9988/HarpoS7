@@ -34,8 +34,22 @@ jobs:
       run: dotnet pack HarpoS7/HarpoS7.csproj -c Release --output ./nupkg_output
     - name: Pack PublicKeys NuGet Package
       run: dotnet pack HarpoS7.PublicKeys/HarpoS7.PublicKeys.csproj -c Release --output ./nupkg_output
+    - name: Pack HarpoS7.PoC (linux)
+      run: dotnet publish HarpoS7.PoC/HarpoS7.PoC.csproj --sc -c Release -r linux-x64 -o linux -p:PublishSingleFile=true
+    - name: Pack HarpoS7.PoC (windows)
+      run: dotnet publish HarpoS7.PoC/HarpoS7.PoC.csproj --sc -c Release -r win-x64 -o windows -p:PublishSingleFile=true
     - name: Upload NuGet Package as Artifact
       uses: actions/upload-artifact@v7
       with:
         name: HarpoS7-NuGet-Packages
         path: ./nupkg_output/*.nupkg
+    - name: Upload HarpoS7.Poc (linux)
+      uses: actions/upload-artifact@v7
+      with:
+        name: HarpoS7.PoC_Linux_x64_SelfContained
+        path: ./linux/*
+    - name: Upload HarpoS7.Poc (windows)
+      uses: actions/upload-artifact@v7
+      with:
+        name: HarpoS7.PoC_Windows_x64_SelfContained
+        path: ./windows/*

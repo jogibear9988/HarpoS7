@@ -5,6 +5,32 @@ namespace HarpoS7.Tests.Fingerprint;
 
 public class HarpoFingerprintTests
 {
+    [Test]
+    public void LookupTablesCoverEveryComputedBlock()
+    {
+        for (var index = 0; index < FingerprintConsts.Data1Collection.Length; index++)
+        {
+            var operations = FingerprintConsts.Data1Collection[index].Length / 3;
+            var requiredBytes = operations * 128;
+            var availableBytes = FingerprintConsts.Data2Collection[index].Length * sizeof(ushort);
+            Assert.That(
+                availableBytes,
+                Is.GreaterThanOrEqualTo(requiredBytes),
+                $"Fingerprint table {index} is too short for its computed indices");
+        }
+    }
+
+    [Test]
+    public void FingerprintChallengeHandlesCapturedLegacyRenewalEdgeCase()
+    {
+        Span<byte> fingerprint = stackalloc byte[FingerprintConsts.FingerprintLength];
+        var challenge = Convert.FromHexString("5B15B4694FC38A775E6778F0770C6E7A3118200D");
+
+        HarpoFingerprint.FingerprintChallenge(fingerprint, challenge);
+
+        Assert.That(Convert.ToHexString(fingerprint), Is.EqualTo("6AB5811DE6D28746"));
+    }
+
     public static IEnumerable<TestCaseData> FingerprintSubProcedureCases
         {
             get
